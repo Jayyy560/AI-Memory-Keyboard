@@ -1,0 +1,46 @@
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Gradle cache and generated files
+.gradle/
+build/
+
+# Android Studio configuration
+.idea/
+*.iml
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build outputs
+*.apk
+*.ap_
+*.aab
+
+# Python caching
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# PyCharm / IntelliJ
+.idea/
+.vscode/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Logs
+*.log
