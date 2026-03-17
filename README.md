@@ -1,148 +1,305 @@
-# AI Relationship Memory Keyboard
+<div align="center">
 
-A privacy-focused Android keyboard powered by AI. It helps you remember context about the people you talk to by analyzing text locally on-device, and surfacing relevant saved memories from a backend Vector Database.
+# 🧠 AI Memory Keyboard
 
-## 1. Project Architecture Diagram
+### *Your conversations. Your context. Your memory.*
 
-```mermaid
-graph TD
-    subgraph Mobile Device (Android)
-        K[Custom Keyboard UI - Compose]
-        IMS[InputMethodService]
-        NER[Local ONNX Model - Extractor]
-        RC[Retrofit Client]
-        
-        K <--> IMS
-        IMS -->|Extract Entities & Topics| NER
-        NER -->|Person & Topic| IMS
-        IMS -->|API Requests| RC
-    end
-    
-    subgraph Backend Infrastructure (Docker & Host)
-        API[FastAPI Service]
-        EMB[Sentence-Transformers]
-        LLM[Local Llama 3 via Ollama]
-        DB[(PostgreSQL)]
-        VEC[(pgvector plugin)]
-        
-        RC <-->|REST/JSON| API
-        API -->|Generate Hint| LLM
-        API -->|Generate Vector| EMB
-        API <-->|Vector Search| DB
-        DB --- VEC
-    end
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.1-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org/)
+[![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-1.5-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Llama 3](https://img.shields.io/badge/Llama_3-Local_LLM-FF6F00?style=for-the-badge&logo=meta&logoColor=white)](https://ollama.com/)
+[![PostgreSQL](https://img.shields.io/badge/pgvector-Vector_DB-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+
+<br/>
+
+> **An Android keyboard that *remembers*.** <br/>
+> It learns context about the people you talk to, saves relationship memories, <br/>
+> and whispers back AI-powered hints — all while keeping your data 100% local.
+
+<br/>
+
+---
+
+</div>
+
+## 💡 The Problem
+
+You're texting Sam. You *know* he mentioned a job interview last week. Or was it a dentist appointment? You can't remember. You scroll up through 200 messages looking for context.
+
+**What if your keyboard just *told* you?**
+
+## ✨ The Solution
+
+AI Memory Keyboard is a custom Android keyboard that sits between you and every conversation. It:
+
+- 🔍 **Detects** who you're talking about using on-device AI (no data leaves your phone)
+- 💾 **Saves** relationship memories with a single tap
+- 🧠 **Recalls** relevant context using semantic vector search
+- 💬 **Whispers** AI-generated hints powered by a local Llama 3 model
+
+**Example:**
+
+```
+You open a chat with "Sam"
+
+┌──────────────────────────────────────────────┐
+│  🧠 Last time Sam mentioned a job interview  │
+│  at Google. He was nervous about the system   │
+│  design round.                         [SAVE] │
+├──────────────────────────────────────────────┤
+│  Q  W  E  R  T  Y  U  I  O  P               │
+│   A  S  D  F  G  H  J  K  L                 │
+│     Z  X  C  V  B  N  M                     │
+│  [DEL]     [  SPACE  ]        [ENTER]        │
+└──────────────────────────────────────────────┘
 ```
 
-## 2. Folder Structure
+---
+
+## 🏗️ Architecture
+
+```mermaid
+graph TB
+    subgraph "📱 Android Device"
+        KB["⌨️ Custom Keyboard<br/>(Jetpack Compose)"]
+        IMS["🔧 InputMethodService"]
+        NER["🤖 On-Device NER<br/>(ONNX Runtime)"]
+        RC["🌐 Retrofit Client"]
+        
+        KB <--> IMS
+        IMS -->|"Extract entities<br/>locally"| NER
+        NER -->|"Person + Topic"| IMS
+        IMS -->|"Only metadata<br/>sent to backend"| RC
+    end
+    
+    subgraph "🖥️ Backend (Docker)"
+        API["⚡ FastAPI"]
+        EMB["🧬 Sentence<br/>Transformers"]
+        LLM["🦙 Llama 3<br/>(via Ollama)"]
+        DB[("🗄️ PostgreSQL<br/>+ pgvector")]
+        
+        RC <-->|"REST API"| API
+        API --> LLM
+        API --> EMB
+        API <--> DB
+    end
+
+    style KB fill:#7F52FF,color:#fff
+    style NER fill:#FF6F00,color:#fff
+    style API fill:#009688,color:#fff
+    style LLM fill:#1976D2,color:#fff
+    style DB fill:#336791,color:#fff
+```
+
+---
+
+## 🔒 Privacy by Design
+
+This isn't just a feature — it's the **core philosophy**.
+
+| Layer | What Happens | What's Sent |
+|-------|-------------|-------------|
+| ⌨️ Keystroke Capture | Buffered locally in `InputMethodService` | ❌ Nothing |
+| 🤖 Entity Detection | ONNX model runs **entirely on-device** | ❌ Nothing |
+| 📡 Context Hint | Only `person` + `topic` metadata sent | ✅ `{"person": "Sam", "topic": "interview"}` |
+| 💾 Save Memory | Only when user **explicitly taps Save** | ✅ User-approved text only |
+
+> **Your raw keystrokes never leave your phone. Ever.**
+
+---
+
+## 📁 Project Structure
 
 ```
 ai-keyboard/
 │
-├── docker-compose.yml           # Runs Postgres+pgvector and the FastAPI backend
-├── README.md                    # This setup guide
+├── 🐳 docker-compose.yml          # One-command backend deployment
+├── 📖 README.md
 │
-├── backend/
+├── 🐍 backend/
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── app/
-│       ├── __init__.py
-│       ├── main.py              # FastAPI Application & Endpoints
-│       ├── models.py            # SQLAlchemy schema definition
-│       ├── schemas.py           # Pydantic validation schemas
-│       ├── database.py          # Postgres connection setup
+│       ├── main.py                 # FastAPI endpoints
+│       ├── models.py               # SQLAlchemy ORM models
+│       ├── schemas.py              # Pydantic request/response schemas
+│       ├── database.py             # PostgreSQL + pgvector connection
 │       └── services/
-│           ├── __init__.py
-│           ├── embedding_service.py # sentence-transformers (all-MiniLM-L6-v2)
-│           └── llm_service.py       # Local Llama 3 hint generation
+│           ├── embedding_service.py   # all-MiniLM-L6-v2 embeddings
+│           └── llm_service.py         # Llama 3 hint generation
 │
-└── mobile/
-    ├── build.gradle.kts         # Root Gradle Script
-    ├── settings.gradle.kts      # Settings script
+└── 📱 mobile/
+    ├── build.gradle.kts
+    ├── settings.gradle.kts
+    ├── gradle.properties
     └── app/
-        ├── build.gradle.kts     # App level dependencies (Compose, Retrofit, ONNX)
+        ├── build.gradle.kts
         └── src/main/
-            ├── AndroidManifest.xml # Declares the InputMethodService
-            ├── res/xml/method.xml  # IME declaration
+            ├── AndroidManifest.xml
+            ├── res/
+            │   ├── xml/method.xml
+            │   └── values/themes.xml
             └── java/com/example/aikeyboard/
-                ├── MemoryKeyboardService.kt # Core Keyboard Service logic
-                ├── ui/KeyboardView.kt       # Jetpack Compose Keyboard Layout
-                ├── ml/NERExtractor.kt       # ONNX Runtime Entity Extraction
-                └── api/BackendClient.kt     # Retrofit Interface
+                ├── MemoryKeyboardService.kt    # Core keyboard service
+                ├── ComposeKeyboardView.kt      # Compose ↔ IME bridge
+                ├── ui/KeyboardView.kt          # Compose keyboard UI
+                ├── ml/NERExtractor.kt          # On-device ONNX NER
+                └── api/BackendClient.kt        # Retrofit API client
 ```
 
-## 3. Setup and Deployment Instructions
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
-- Docker (including `docker compose`) installed.
-- [Ollama](https://ollama.com/) installed on your host machine.
-- Android Studio Ladybug or newer.
-- Android Emulator or physical device (API 26+).
 
-### Backend Setup (Local / Docker)
+| Tool | Purpose |
+|------|---------|
+| [Docker Desktop](https://docker.com) | Backend infrastructure |
+| [Ollama](https://ollama.com) | Local Llama 3 model host |
+| [Android Studio](https://developer.android.com/studio) | Mobile development (Ladybug+) |
+| Android device or emulator | API 26+ (Android 8.0+) |
 
-1. First, ensure Ollama is running and download the `llama3` model:
-   ```bash
-   ollama pull llama3:latest
-   ollama run llama3:latest
-   ```
-   *Note: Ollama needs to be accessible on your host machine at `http://localhost:11434`.*
+### 1️⃣ Start the AI Backend
 
-2. Open a terminal and navigate to the project root:
-   ```bash
-   cd "ai keyboard"
-   ```
+```bash
+# Pull and start the local LLM
+ollama pull llama3:latest
+ollama serve
 
-3. Build and run the backend services using `docker compose`:
-   ```bash
-   docker compose up --build
-   ```
-   This will start:
-   - PostgreSQL (port `5432`)
-   - FastAPI Server (port `8000`)
-   - The first run will download the lightweight `all-MiniLM-L6-v2` HuggingFace embedding model into the python container.
+# In another terminal, spin up the backend
+cd "ai keyboard"
+docker compose up --build
+```
 
-4. Check the API is running by visiting:
-   - http://localhost:8000/docs (Swagger UI)
+> ☕ First run downloads the `all-MiniLM-L6-v2` embedding model (~80MB). Grab a coffee.
 
-### Android App Setup
+Verify the backend is running:
+```
+🌐 http://localhost:8000/docs    → Swagger UI
+🏥 http://localhost:8000/health  → Health check
+```
 
-1. Open the `mobile/` directory using **Android Studio**.
-2. Allow Gradle to sync and download all dependencies (Compose, ONNX, Retrofit).
-3. If running on an **Emulator**, the API client is configured to hit `http://10.0.2.2:8000` which points to your host machine's localhost. (If physical device, change this IP in `BackendClient.kt` to your laptop's Wi-Fi IP).
-4. Build and install the APK (`Run -> Run 'app'`).
-5. On the Android device/emulator:
-   - Go to **Settings > System > Languages & input > On-screen keyboard**
-   - Click **Manage on-screen keyboards** and enable "AI Memory Keyboard".
-   - Open any text field (e.g., Messages app) and set the keyboard to the AI Keyboard.
+### 2️⃣ Build & Install the Keyboard
 
-## 4. API Documentation
+```bash
+# Open the mobile/ directory in Android Studio
+# OR build from CLI:
+cd mobile
+./gradlew installDebug
+```
 
-Exposed at `http://localhost:8000/docs`
+### 3️⃣ Enable the Keyboard
 
-### `POST /memory`
-*Saves an explicit memory for a contact locally generated on the device.*
-- **Body:** `{"device_id": "str", "contact_name": "str", "memory_text": "str"}`
-- **Response:** `{"id": int, "user_id": int, ...}`
+1. 📱 **Settings** → **System** → **Languages & Input** → **On-screen Keyboard**
+2. Toggle **AI Memory Keyboard** → `ON`
+3. Open any text field → Tap the keyboard icon → Select **AI Memory Keyboard**
 
-### `GET /memory/person/{contact_name}?device_id={device_id}`
-*Retrieves all raw memory entries stored for a specific person.*
-- **Response:** `[{"id": 1, "memory_text": "str", "created_at": "datetime"}]`
+---
 
-### `POST /suggestions`
-*Given a detected context, searches Vector DB and generates an LLM hint.*
-- **Body:** `{"device_id": "str", "contact_name": "str", "current_topic": "str"}`
-- **Response:**
-  ```json
+## 🔌 API Reference
+
+<details>
+<summary><b>POST /memory</b> — Save a relationship memory</summary>
+
+```json
+// Request
+{
+  "device_id": "device_123",
+  "contact_name": "Sam",
+  "memory_text": "Sam got the job at Google! Starts in March."
+}
+
+// Response → 201 Created
+{
+  "id": 42,
+  "user_id": 1,
+  "contact_id": 7,
+  "memory_text": "Sam got the job at Google! Starts in March.",
+  "embedding": [0.023, -0.041, ...],
+  "created_at": "2025-03-17T18:30:00Z"
+}
+```
+</details>
+
+<details>
+<summary><b>POST /suggestions</b> — Get AI context hints</summary>
+
+```json
+// Request
+{
+  "device_id": "device_123",
+  "contact_name": "Sam",
+  "current_topic": "work"
+}
+
+// Response → 200 OK
+{
+  "hint": "Sam recently got a job at Google and starts in March!",
+  "relevant_memories": [
+    "Sam got the job at Google! Starts in March.",
+    "Sam was preparing for system design interviews."
+  ]
+}
+```
+</details>
+
+<details>
+<summary><b>GET /memory/person/{name}</b> — Retrieve all memories for a person</summary>
+
+```json
+// GET /memory/person/Sam?device_id=device_123
+// Response → 200 OK
+[
   {
-      "hint": "You promised Sam a book recommendation.",
-      "relevant_memories": ["Sam loves sci-fi books."]
+    "id": 42,
+    "memory_text": "Sam got the job at Google!",
+    "created_at": "2025-03-17T18:30:00Z"
+  },
+  {
+    "id": 38,
+    "memory_text": "Sam was nervous about system design interviews.",
+    "created_at": "2025-03-15T10:00:00Z"
   }
-  ```
+]
+```
+</details>
 
-## 5. Privacy Architecture Details
+---
 
-To meet strict privacy standards:
-1. **Never send raw keystrokes:** The system intercepts keystrokes via `MemoryKeyboardService.kt` and maintains an internal buffer.
-2. **Local AI Parsing:** Uses `NERExtractor.kt` powered by ONNX to extract the topic and person.
-3. **Trigger Driven:** The API ping (`POST /suggestions`) is ONLY sent when a specific entity/topic is matched locally, and only the metadata `(person="Sam", topic="interview")` is sent, NOT the actual text you are typing.
-4. **Explicit Memories:** `POST /memory` is only invoked when the user taps "Save Memory" on the keyboard UI.
+## 🛠️ Tech Stack
+
+| Component | Technology | Why |
+|-----------|-----------|-----|
+| **Keyboard UI** | Jetpack Compose | Modern, declarative Android UI |
+| **Keyboard Service** | `InputMethodService` | Native Android IME framework |
+| **On-Device NER** | ONNX Runtime Mobile | Fast, private entity extraction |
+| **API Client** | Retrofit + Gson | Type-safe HTTP for Android |
+| **Backend** | FastAPI (Python) | Async, high-performance API |
+| **Vector Search** | PostgreSQL + pgvector | Semantic memory retrieval |
+| **Embeddings** | all-MiniLM-L6-v2 | Lightweight 384-dim sentence vectors |
+| **LLM** | Llama 3 via Ollama | Fully local, privacy-preserving AI |
+| **Infrastructure** | Docker Compose | One-command deployment |
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] 🎨 Dark mode keyboard theme
+- [ ] 📊 Memory analytics dashboard
+- [ ] 🔤 Swipe-to-type support
+- [ ] 🌍 Multi-language NER models
+- [ ] 📲 iOS keyboard extension
+- [ ] 🔐 End-to-end encryption for memories
+- [ ] 🎯 Smart auto-complete powered by context
+
+---
+
+<div align="center">
+
+### Built with ❤️ by [Jayant Vig](https://github.com/Jayyy560)
+
+**If this project helped you, consider giving it a ⭐**
+
+</div>
