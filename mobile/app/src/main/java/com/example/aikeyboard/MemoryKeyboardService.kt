@@ -1,10 +1,13 @@
 package com.example.aikeyboard
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.util.Log
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.*
@@ -32,8 +35,15 @@ class MemoryKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
     private var currentTypedBuffer = StringBuilder()
     private var lastExtractedContext: ExtractedContext? = null
 
+    // Word Suggestions
+    private var wordSuggestions = mutableStateListOf<String>()
+    private var currentWord = StringBuilder()
+
     // ML Engine
     private lateinit var nerExtractor: NERExtractor
+
+    // Local storage for memories (works without backend)
+    private lateinit var memoryPrefs: SharedPreferences
 
     // Lifecycle requirements for Compose inside InputMethodService
     private var mLifecycleRegistry: LifecycleRegistry = LifecycleRegistry(this)
@@ -44,12 +54,46 @@ class MemoryKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
     override val savedStateRegistry: SavedStateRegistry get() = mSavedStateRegistryController.savedStateRegistry
     override val viewModelStore: ViewModelStore get() = mViewModelStore
 
+    // Basic dictionary for word suggestions
+    private val commonWords = listOf(
+        "the", "that", "this", "then", "them", "they", "there", "their", "these", "those",
+        "have", "has", "had", "having",
+        "been", "being", "because", "before", "between", "both",
+        "about", "after", "again", "also", "another",
+        "can", "could", "come", "came",
+        "do", "does", "did", "done", "doing", "down",
+        "each", "even", "every",
+        "for", "from", "find", "first",
+        "get", "give", "go", "going", "good", "great",
+        "help", "here", "how", "hello",
+        "if", "in", "into", "is", "it",
+        "just",
+        "know", "keep",
+        "like", "look", "long", "let",
+        "make", "more", "most", "much", "my", "made",
+        "new", "no", "not", "now", "need", "never", "nice",
+        "of", "on", "one", "only", "or", "other", "our", "out", "over", "okay",
+        "people", "please", "place",
+        "really", "right",
+        "say", "see", "she", "should", "so", "some", "still",
+        "take", "tell", "than", "thank", "thanks", "time", "today", "too",
+        "up", "us", "use",
+        "very",
+        "want", "was", "way", "we", "well", "were", "what", "when", "where", "which", "who", "why", "will", "with", "would", "work",
+        "yes", "you", "your",
+        "hey", "hi", "sure", "yeah", "yep", "nope", "maybe", "sorry",
+        "love", "miss", "meet", "meeting", "happy", "birthday", "dinner", "lunch",
+        "tomorrow", "yesterday", "tonight", "morning", "afternoon", "evening",
+        "friend", "family", "home", "phone", "call", "message", "text"
+    )
+
     override fun onCreate() {
         super.onCreate()
         Log.d("MemoryKeyboard", "onCreate() called")
         mSavedStateRegistryController.performRestore(null)
         mLifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         nerExtractor = NERExtractor(this)
+        memoryPrefs = getSharedPreferences("ai_keyboard_memories", Context.MODE_PRIVATE)
     }
 
     override fun onCreateInputView(): View {
@@ -66,10 +110,12 @@ class MemoryKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
         composeView = ComposeKeyboardView(this) {
             KeyboardView(
                 aiSuggestionState = aiHintState.value,
+                suggestions = wordSuggestions.toList(),
                 onKeyPress = { key -> handleKey(key) },
                 onSaveMemoryClick = { handleSaveMemory() },
                 onDeletePress = { handleDelete() },
-                onEnterPress = { handleEnter() }
+                onEnterPress = { handleEnter() },
+                onSuggestionClick = { word -> handleSuggestionClick(word) }
             )
         }.apply {
             setViewTreeLifecycleOwner(this@MemoryKeyboardService)
@@ -86,6 +132,8 @@ class MemoryKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
         super.onStartInputView(info, restarting)
         Log.d("MemoryKeyboard", "onStartInputView() called")
         currentTypedBuffer.clear()
+        currentWord.clear()
+        wordSuggestions.clear()
         aiHintState.value = ""
     }
 
@@ -93,8 +141,16 @@ class MemoryKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
         currentInputConnection?.commitText(key, 1)
         currentTypedBuffer.append(key)
         
+        // Track current word for suggestions
+        if (key == " ") {
+            currentWord.clear()
+            wordSuggestions.clear()
+        } else {
+            currentWord.append(key)
+            updateWordSuggestions(currentWord.toString())
+        }
+        
         // Every keystroke, evaluate privacy-safe local extraction
-        // In reality, you'd likely debounce this or look at specific trigger words
         evaluateContextLocally(currentTypedBuffer.toString())
     }
 
@@ -103,42 +159,97 @@ class MemoryKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
         if (currentTypedBuffer.isNotEmpty()) {
             currentTypedBuffer.deleteCharAt(currentTypedBuffer.length - 1)
         }
+        if (currentWord.isNotEmpty()) {
+            currentWord.deleteCharAt(currentWord.length - 1)
+            if (currentWord.isNotEmpty()) {
+                updateWordSuggestions(currentWord.toString())
+            } else {
+                wordSuggestions.clear()
+            }
+        }
     }
 
     private fun handleEnter() {
         currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
         currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
         currentTypedBuffer.clear()
+        currentWord.clear()
+        wordSuggestions.clear()
+    }
+
+    private fun handleSuggestionClick(word: String) {
+        // Replace the current partial word with the suggestion
+        val partial = currentWord.toString()
+        if (partial.isNotEmpty()) {
+            currentInputConnection?.deleteSurroundingText(partial.length, 0)
+        }
+        currentInputConnection?.commitText("$word ", 1)
+        currentTypedBuffer.append(word.removePrefix(partial)).append(" ")
+        currentWord.clear()
+        wordSuggestions.clear()
+    }
+
+    private fun updateWordSuggestions(prefix: String) {
+        if (prefix.length < 2) {
+            wordSuggestions.clear()
+            return
+        }
+        val lowerPrefix = prefix.lowercase()
+        val matches = commonWords
+            .filter { it.startsWith(lowerPrefix) && it != lowerPrefix }
+            .take(3)
+        wordSuggestions.clear()
+        wordSuggestions.addAll(matches)
     }
 
     private fun handleSaveMemory() {
-        val context = lastExtractedContext
-        val memoryText = currentTypedBuffer.toString()
-        if (context == null || context.person == "unknown" || memoryText.isBlank()) {
-            aiHintState.value = "Need a name and text to save."
+        val memoryText = currentTypedBuffer.toString().trim()
+        if (memoryText.isBlank()) {
+            aiHintState.value = "Type something first to save as a memory."
             return
         }
 
+        // Extract context — try to find a name in the text
+        val context = nerExtractor.extractContext(memoryText)
+        val contactName = if (context.person != "unknown") context.person else "General"
+
+        // Save locally first (works without backend!)
+        saveMemoryLocally(contactName, memoryText)
+
+        // Also try backend in background (non-blocking)
         scope.launch(Dispatchers.IO) {
             try {
-                // Send explicit "Saved Memory" to Backend
                 BackendClient.api.saveMemory(
                     MemoryRequest(
-                        device_id = "device_123", // Example hardcoded device id
-                        contact_name = context.person,
+                        device_id = "device_123",
+                        contact_name = contactName,
                         memory_text = memoryText
                     )
                 )
-                withContext(Dispatchers.Main) {
-                    aiHintState.value = "Saved memory for ${context.person}!"
-                    currentTypedBuffer.clear()
-                }
+                Log.d("MemoryKeyboard", "Memory also saved to backend for $contactName")
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    aiHintState.value = "Failed to save memory."
-                }
+                Log.d("MemoryKeyboard", "Backend unavailable, memory saved locally only: ${e.message}")
             }
         }
+    }
+
+    private fun saveMemoryLocally(contactName: String, memoryText: String) {
+        val key = "memories_$contactName"
+        val existing = memoryPrefs.getStringSet(key, mutableSetOf()) ?: mutableSetOf()
+        val updated = existing.toMutableSet()
+        updated.add(memoryText)
+        memoryPrefs.edit().putStringSet(key, updated).apply()
+
+        aiHintState.value = "💾 Saved memory for $contactName!"
+        Log.d("MemoryKeyboard", "Saved locally: [$contactName] $memoryText")
+        currentTypedBuffer.clear()
+        currentWord.clear()
+        wordSuggestions.clear()
+    }
+
+    fun getLocalMemories(contactName: String): Set<String> {
+        val key = "memories_$contactName"
+        return memoryPrefs.getStringSet(key, emptySet()) ?: emptySet()
     }
 
     private fun evaluateContextLocally(text: String) {
@@ -149,9 +260,18 @@ class MemoryKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
         val context = nerExtractor.extractContext(text)
         lastExtractedContext = context
 
-        if (context.person != "unknown" && context.topic != "unknown") {
-            // Once locally detected, fetch hints about that specific person & topic
-            fetchSuggestions(context.person, context.topic)
+        if (context.person != "unknown") {
+            // Check local storage for memories about this person
+            val localMemories = getLocalMemories(context.person)
+            if (localMemories.isNotEmpty()) {
+                val recentMemory = localMemories.last()
+                aiHintState.value = "🧠 ${context.person}: $recentMemory"
+            }
+
+            // Also try backend suggestions in background (non-blocking)
+            if (context.topic != "unknown") {
+                fetchSuggestions(context.person, context.topic)
+            }
         }
     }
 
@@ -173,7 +293,7 @@ class MemoryKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
                     }
                 }
             } catch (e: Exception) {
-                // Ignore network failures for typing performance
+                // Backend unavailable — local memories are already shown, no need to crash
             }
         }
     }

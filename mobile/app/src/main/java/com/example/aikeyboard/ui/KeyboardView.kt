@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -14,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -24,18 +26,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import kotlinx.coroutines.delay
 
 // ─── Theme Definitions ─────────────────────────────────────────────
 data class KeyboardTheme(
@@ -123,12 +126,15 @@ val allThemes = listOf(ThemeMidnight, ThemeOcean, ThemeForest, ThemeRose, ThemeS
 @Composable
 fun KeyboardView(
     aiSuggestionState: String,
+    suggestions: List<String>,
     onKeyPress: (String) -> Unit,
     onSaveMemoryClick: () -> Unit,
     onDeletePress: () -> Unit,
-    onEnterPress: () -> Unit
+    onEnterPress: () -> Unit,
+    onSuggestionClick: (String) -> Unit
 ) {
     var isSymbolMode by remember { mutableStateOf(false) }
+    var isCapsOn by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var themeIndex by remember { mutableIntStateOf(0) }
     var keyHeightScale by remember { mutableFloatStateOf(1.0f) }
@@ -179,6 +185,38 @@ fun KeyboardView(
             }
         }
 
+        // Word Suggestions Bar
+        if (suggestions.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                suggestions.take(3).forEach { word ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 3.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(theme.keyActionColor)
+                            .clickable { onSuggestionClick(word) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = word,
+                            color = theme.textColor,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+
         // Settings Panel (Collapsible)
         AnimatedVisibility(
             visible = showSettings,
@@ -220,29 +258,51 @@ fun KeyboardView(
                     horizontalArrangement = Arrangement.Center
                 ) {
                     if (index == 1) Spacer(modifier = Modifier.weight(0.5f))
-                    if (index == 2) Spacer(modifier = Modifier.weight(1.5f))
+
+                    // Shift key on the third row (left side)
+                    if (index == 2 && !isSymbolMode) {
+                        KeyButton(
+                            text = if (isCapsOn) "⇪" else "⇧",
+                            modifier = Modifier.weight(1.5f),
+                            theme = theme,
+                            keyHeight = baseKeyHeight,
+                            bgColor = if (isCapsOn) theme.accentColor else theme.keyActionColor,
+                            showPopup = false
+                        ) {
+                            isCapsOn = !isCapsOn
+                        }
+                    } else if (index == 2 && isSymbolMode) {
+                        Spacer(modifier = Modifier.weight(1.5f))
+                    }
 
                     row.forEach { key ->
+                        val displayKey = if (isCapsOn && !isSymbolMode && key.length == 1 && key[0].isLetter()) {
+                            key.uppercase()
+                        } else {
+                            key
+                        }
                         KeyButton(
-                            text = key,
+                            text = displayKey,
                             modifier = Modifier.weight(1f),
                             theme = theme,
                             keyHeight = baseKeyHeight,
                             showPopup = true
                         ) {
-                            onKeyPress(key)
+                            onKeyPress(displayKey)
                         }
                     }
 
                     if (index == 1) Spacer(modifier = Modifier.weight(0.5f))
                     if (index == 2) {
-                        KeyButton(
+                        // Backspace with continuous delete
+                        RepeatableKeyButton(
                             text = "⌫",
                             modifier = Modifier.weight(1.5f),
                             theme = theme,
                             keyHeight = baseKeyHeight,
                             bgColor = theme.keyActionColor,
-                            showPopup = false
+                            initialDelay = 400L,
+                            repeatDelay = 50L
                         ) { onDeletePress() }
                     }
                 }
@@ -325,7 +385,6 @@ fun SettingsPanel(
             .background(theme.aiPanelBg, RoundedCornerShape(12.dp))
             .padding(12.dp)
     ) {
-        // Theme selector
         Text(
             "Theme",
             color = theme.aiPanelText,
@@ -370,7 +429,6 @@ fun SettingsPanel(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Key Size
         Text(
             "Key Size",
             color = theme.aiPanelText,
@@ -449,7 +507,7 @@ fun KeyButton(
         if (isPressed && showPopup && text.length == 1) {
             Popup(
                 alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -160), // px offset above the finger
+                offset = IntOffset(0, -160),
                 properties = PopupProperties(clippingEnabled = false)
             ) {
                 Box(
@@ -468,5 +526,64 @@ fun KeyButton(
                 }
             }
         }
+    }
+}
+
+// ─── Repeatable Key Button (for backspace hold-to-delete) ──────────
+
+@Composable
+fun RepeatableKeyButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    theme: KeyboardTheme,
+    keyHeight: Dp = 52.dp,
+    bgColor: Color = theme.keyActionColor,
+    initialDelay: Long = 400L,
+    repeatDelay: Long = 50L,
+    onClick: () -> Unit
+) {
+    val view = LocalView.current
+    var isPressed by remember { mutableStateOf(false) }
+
+    // Continuously fire onClick while the key is held down
+    LaunchedEffect(isPressed) {
+        if (isPressed) {
+            // First fire immediately on press
+            onClick()
+            // Wait initial delay before repeating
+            delay(initialDelay)
+            // Then repeat rapidly
+            while (isPressed) {
+                onClick()
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                delay(repeatDelay)
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .padding(horizontal = 3.dp, vertical = 4.dp)
+            .height(keyHeight)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isPressed) theme.pressedKeyColor else bgColor)
+            .pointerInput(text) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    isPressed = true
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+
+                    waitForUpOrCancellation()
+                    isPressed = false
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            fontSize = 15.sp,
+            color = theme.textColor,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
