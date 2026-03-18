@@ -2,11 +2,11 @@ package com.example.aikeyboard.ui
 
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,10 +17,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 
 // Modern Color Palette
 val BgColor = Color(0xFF121212)
@@ -153,18 +156,27 @@ fun KeyButton(
     onClick: () -> Unit
 ) {
     val view = LocalView.current
+    var isPressed by remember { mutableStateOf(false) }
+
     Box(
         modifier = modifier
             .padding(horizontal = 3.dp, vertical = 5.dp)
             .height(48.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(bgColor)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = rememberRipple(color = Color.White)
-            ) { 
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                onClick() 
+            .background(if (isPressed) Color(0xFF424242) else bgColor)
+            .pointerInput(text) { // Re-run pointer input if text changes (symbol swap)
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    isPressed = true
+                    // Using VIRTUAL_KEY for a much stronger and defined haptic snap
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    
+                    val up = waitForUpOrCancellation()
+                    isPressed = false
+                    if (up != null) {
+                        onClick()
+                    }
+                }
             },
         contentAlignment = Alignment.Center
     ) {
@@ -174,5 +186,28 @@ fun KeyButton(
             color = if (bgColor == AccentColor) Color.White else TextColor,
             fontWeight = if (text.length > 1) FontWeight.Medium else FontWeight.Normal
         )
+
+        // Show popup preview only for single character keys like standard keyboards
+        if (isPressed && text.length == 1) {
+            Popup(
+                alignment = Alignment.TopCenter,
+                properties = PopupProperties(clippingEnabled = false)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .offset(y = (-55).dp) // Float above the finger
+                        .size(width = 52.dp, height = 65.dp)
+                        .background(Color(0xFF383838), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = text, 
+                        fontSize = 32.sp, 
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
     }
 }
