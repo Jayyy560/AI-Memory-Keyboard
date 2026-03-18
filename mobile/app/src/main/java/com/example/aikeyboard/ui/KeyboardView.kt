@@ -1,5 +1,6 @@
 package com.example.aikeyboard.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -8,11 +9,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,6 +39,8 @@ fun KeyboardView(
     onDeletePress: () -> Unit,
     onEnterPress: () -> Unit
 ) {
+    var isSymbolMode by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -83,13 +90,21 @@ fun KeyboardView(
                 .fillMaxWidth()
                 .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
-            val rows = listOf(
+            val alphaRows = listOf(
                 listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
                 listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"),
                 listOf("z", "x", "c", "v", "b", "n", "m")
             )
 
-            rows.forEachIndexed { index, row ->
+            val symbolRows = listOf(
+                listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
+                listOf("@", "#", "$", "%", "&", "-", "+", "(", ")"),
+                listOf("*", "\"", "'", ":", ";", "!", "?")
+            )
+
+            val currentRows = if (isSymbolMode) symbolRows else alphaRows
+
+            currentRows.forEachIndexed { index, row ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center
@@ -118,7 +133,9 @@ fun KeyboardView(
                     .padding(top = 2.dp),
                 horizontalArrangement = Arrangement.Center
             ) {
-                KeyButton(text = "?123", modifier = Modifier.weight(1.5f), bgColor = KeyActionColor) { /* TBD */ }
+                KeyButton(text = if (isSymbolMode) "ABC" else "?123", modifier = Modifier.weight(1.5f), bgColor = KeyActionColor) { 
+                    isSymbolMode = !isSymbolMode 
+                }
                 KeyButton(text = ",", modifier = Modifier.weight(1f), bgColor = KeyActionColor) { onKeyPress(",") }
                 KeyButton(text = "space", modifier = Modifier.weight(4f)) { onKeyPress(" ") }
                 KeyButton(text = ".", modifier = Modifier.weight(1f), bgColor = KeyActionColor) { onKeyPress(".") }
@@ -135,6 +152,7 @@ fun KeyButton(
     bgColor: Color = KeyNormalColor,
     onClick: () -> Unit
 ) {
+    val view = LocalView.current
     Box(
         modifier = modifier
             .padding(horizontal = 3.dp, vertical = 5.dp)
@@ -144,7 +162,10 @@ fun KeyButton(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = rememberRipple(color = Color.White)
-            ) { onClick() },
+            ) { 
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                onClick() 
+            },
         contentAlignment = Alignment.Center
     ) {
         Text(
